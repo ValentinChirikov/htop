@@ -17,7 +17,7 @@ Add a new `NVGPUMeter` class to htop that reads GPU utilization and VRAM usage f
 |----------|--------|-----------|
 | Meter granularity | One meter per GPU | Best visibility, matches htop patterns for per-device meters |
 | Metrics | Utilization % + VRAM usage % | Most useful numbers for process monitoring |
-| Library loading | Runtime dlopen | No compile-time dependency; silent no-op when NVML unavailable |
+| Library loading | Compile-time via `--enable-nvidia` | Simpler code, direct nvml.h headers, standard autoconf pattern like --enable-sensors |
 | Display style | Stacked bars + text summary | Matches existing meter conventions |
 
 ## Architecture
@@ -25,22 +25,27 @@ Add a new `NVGPUMeter` class to htop that reads GPU utilization and VRAM usage f
 ### New files
 
 - `linux/NVGPU.h` — declarations for NVML backend and meter class
-- `linux/NVGPU.c` — NVML dlopen wrapper, data fetching, and meter implementation
+- `linux/NVGPU.c` — NVML data fetching and meter implementation
 
-No changes to existing files except adding the new meter to `Platform.c`'s meters array.
+### Modified files
+
+- `configure.ac` — add `--enable-nvidia` option (pattern: sensors check, Linux-only)
+- `linux/Platform.c` — register `NVGPUMeter_class` in meters array, include header, call nvmlShutdown at Platform_done
 
 ### Module responsibilities
 
 | Module | Responsibility |
 |--------|---------------|
-| NVGPU backend functions | dlopen `libnvidia-ml.so.1`, wrap NVML calls, fetch utilization + memory per GPU |
+| NVGPU backend functions | Direct NVML API calls (via nvml.h), fetch utilization + memory per GPU |
 | NVGPUMeter class | Meter interface: `updateValues`, `display`, one instance per detected GPU |
-| Platform.c | Register `NVGPUMeter_class` in the meters array; call init/done at platform level to discover GPUs |
+| Platform.c | Register `NVGPUMeter_class` in the meters array; call nvmlInit/done at platform level |
 
 ### Data flow
 
 ```
-Platform_init() → NVGPUMeter_detectGPUs() → [dlopen, nvmlInit, nvmlDeviceGetCount]
+configure.ac → --enable-nvidia → AC_CHECK_LIB + AC_CHECK_HEADERS → HAVE_NVML in config.h
+                                                          ↓
+Platform_init() → NVGPUMeter_detectGPUs() → [nvmlInit, nvmlDeviceGetCount]
                                               ↓
 Platform_setValues() (every refresh) → NVGPUMeter_fetchValues(gpuIndex) → [nvmlDeviceGetProcessUtilization / nvmlDeviceGetMemoryInfo]
                                               ↓
@@ -50,30 +55,27 @@ Meter.display()     → draws bars + text
 
 ## NVML Backend
 
-### Library loading
+### Library linkage
 
-Runtime dlopen of `libnvidia-ml.so.1`. Function pointers stored in a single static struct:
+Linked at build time via `-lnvidia-ml` (when `--enable-nvidia` is set). Include `<nvml.h>` directly. Standard autoconf check pattern:
 
-```c
-typedef struct {
-   void* handle;
-   nvmlInit_t nvmlInit;
-   nvmlShutdown_t nvmlShutdown;
-   nvmlDeviceGetCount_t nvmlDeviceGetCount;
-   nvmlDeviceGetName_t nvmlDeviceGetName;
-   nvmlDeviceGetMemoryInfo_t nvmlDeviceGetMemoryInfo;
-   nvmlDeviceGetProcessUtilization_t nvmlDeviceGetProcessUtilization;
-} NvmlLibrary;
 ```
+AC_CHECK_LIB([nvidia-ml], [nvmlInit], [], [enable_nvidia=no])
+AC_CHECK_HEADERS([nvml.h], [], [enable_nvidia=no])
+```
+
+Gated by `my_htop_platform = linux` (NVML is Linux-only).
+
+Define `BUILD_WITH_NVIDIA` preprocessor macro when enabled.
 
 ### GPU discovery
 
 On first call, `NVGPUMeter_initLibrary()`:
 
-1. dlopen `libnvidia-ml.so.1`, resolve all function pointers
+1. Call `nvmlInit()` to initialize NVML
 2. Call `nvmlDeviceGetCount()` to get GPU count
-3. For each GPU, call `nvmlDeviceGetName()` for the display name
-4. Store results in a static array: `static NvmlGpuInfo nvmlGpus[8];` (cap at 8 GPUs)
+3. For each GPU, call `nvmlDeviceGetHandleByIndex(i, &handle)` and `nvmlDeviceGetName(handle, name, sizeof(name))` for the display name
+4. Store results in a static array: `static nvmlDevice_t nvmlDevices[8];` (cap at 8 GPUs)
 
 ### Utilization fetching
 
@@ -81,7 +83,7 @@ NVML's `nvmlDeviceGetProcessUtilization()` returns a snapshot of utilizations ov
 
 1. Call `nvmlDeviceGetProcessUtilization()` for each GPU with a recent sample period
 2. Compare against last sample to get utilization % since last call
-3. Call `nvmlDeviceGetMemoryInfo()` for total/used memory
+3. Call `nvmlDeviceGetMemoryInfo(handle, &memInfo)` for total/used memory
 
 ### Shutdown
 
@@ -104,13 +106,13 @@ One instance per GPU, created with `Meter_new(host, gpuIndex, &NVGPUMeter_class)
 
 Bar mode:
 ```
-GPU 0: [████░░░░░░] 42.5%  Mem [███████░░░] 6.2Gi/8.0Gi (77%)
+Tesla V100: [████░░░░░░] 42.5% Mem 6144MiB 76.8%
 ```
 
-- Caption: `"GPU <index>"` (from NVML device name)
-- First bar segment: core utilization, colored with `CPU_NORMAL` or new `GPU_UTIL` color
-- Second bar segment: VRAM usage, colored with new `GPU_MEMORY` color
-- Text summary: `"42.5%  Mem 6.2Gi/8.0Gi (77%)"`
+- Caption: NVML device name (e.g., `"Tesla V100-SXM2-16GB"`)
+- First bar segment: core utilization, colored with `GPU_ENGINE_1` (green)
+- Second bar segment: VRAM usage, colored with `GPU_ENGINE_2` (yellow)
+- Text summary: `"42.5% Mem 6144MiB 76.8%"`
 
 ### Meter modes
 
@@ -125,13 +127,13 @@ Support `BAR_METERMODE` (default), `TEXT_METERMODE`, and `CHART_METERMODE`.
 
 ### Platform registration
 
-`NVGPUMeter_class` added to the Linux `Platform.c` meters array alongside `GPUMeter_class`, `CPUMeter_class`, etc.
+`NVGPUMeter_class` added to the Linux `Platform.c` meters array alongside `GPUMeter_class`, `CPUMeter_class`, etc. Wrapped in `#ifdef BUILD_WITH_NVIDIA`.
 
 ### Meter discovery
 
 In `Platform_init()` (linux):
 
-1. Call `NVGPUMeter_detectGPUs()` — dlopen NVML, enumerate GPUs
+1. Call `NVGPUMeter_detectGPUs()` — nvmlInit, enumerate GPUs
 2. If NVIDIA GPUs found, create one meter per GPU via `Meter_new()` and store in a static array
 3. MetersPanel lists "NVGPU 0", "NVGPU 1", etc. as available meters
 
@@ -147,9 +149,8 @@ Static `NVGPUMeter_active()` returns true if any NVML meters exist, gating wheth
 
 | Scenario | Behavior |
 |----------|----------|
-| libnvidia-ml.so missing | dlopen fails → count = 0, no meters created, silent no-op |
-| nvmlInit() fails | Same as above |
-| GPU removed at runtime | Error on query → skip meter update for that cycle |
+| nvmlInit() fails | No GPUs detected, no meters created, silent no-op |
+| GPU removed at runtime | NVML error on query → skip meter update for that cycle |
 | First utilization call (no prior sample) | Return 0% utilization |
 | Abnormal exit | Driver cleans up; no resource leak |
 | Thread safety | Single-threaded main loop; no mutex needed |
@@ -159,6 +160,6 @@ Static `NVGPUMeter_active()` returns true if any NVML meters exist, gating wheth
 | File | Action | Description |
 |------|--------|-------------|
 | `linux/NVGPU.h` | New | NVML backend and meter class declarations |
-| `linux/NVGPU.c` | New | NVML dlopen wrapper, data fetching, meter implementation |
-| `linux/Platform.c` | Modify | Register `NVGPUMeter_class` in meters array |
-| `linux/Platform.h` | Modify | Declare `NVGPUMeter_detectGPUs()` if needed |
+| `linux/NVGPU.c` | New | NVML data fetching, meter implementation |
+| `configure.ac` | Modify | Add `--enable-nvidia` option (Linux-only) |
+| `linux/Platform.c` | Modify | Register `NVGPUMeter_class`, nvmlInit/done calls |
