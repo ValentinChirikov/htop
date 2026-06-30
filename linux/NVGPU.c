@@ -25,9 +25,6 @@ in the source distribution for its full text.
 #include "XUtils.h"
 
 
-#define NVGPU_MAX_GPUS 8
-
-
 /* ---- Global state ---- */
 
 static nvmlDevice_t nvmlDevices[NVGPU_MAX_GPUS];
@@ -57,6 +54,7 @@ static bool nvmlInitLibrary(void) {
    unsigned int count = 0;
    if (nvmlDeviceGetCount(&count) != 0 || count == 0) {
       nvmlShutdown();
+      nvmlInitialized = false;
       return false;
    }
 
@@ -121,6 +119,9 @@ static void nvmlFetchValues(void) {
       nvmlReturn_t ret = nvmlDeviceGetProcessUtilization(
          nvmlDevices[i], &sample, &count, 1000);
 
+      /* lastCounterPeriod is cumulative GPU time in milliseconds since driver load.
+       * The formula computes utilization as the fraction of wall-clock time the GPU
+       * spent processing work during the sampling interval. */
       if (ret == 0 && count > 0 && sample.lastCounterPeriod > nvmlUtilHistory[i].prevPeriod) {
          unsigned long long periodDelta = sample.lastCounterPeriod - nvmlUtilHistory[i].prevPeriod;
          if (periodDelta > 0) {

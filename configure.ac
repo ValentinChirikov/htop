@@ -1714,6 +1714,7 @@ case "$enable_nvidia" in
 esac
 fi
 if test "$enable_nvidia" = yes && test "$my_htop_platform" = linux; then
+   LIBS="$LIBS -lnvidia-ml"
    AC_DEFINE([BUILD_WITH_NVIDIA], [1], [Define if NVIDIA GPU monitoring should be enabled.])
 fi
 AM_CONDITIONAL([BUILD_WITH_NVIDIA], [test "$enable_nvidia" = yes && test "$my_htop_platform" = linux])
