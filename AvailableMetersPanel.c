@@ -28,6 +28,10 @@ in the source distribution for its full text.
 #include "Settings.h"
 #include "XUtils.h"
 
+#ifdef BUILD_WITH_NVIDIA
+#include "linux/NVGPU.h"
+#endif
+
 
 static const char* const AvailableMetersFunctions[] = {"      ", "      ", "      ", "      ", "Add Lt", "Add Rt", "      ", "      ", "      ", "Done  ", NULL};
 
@@ -144,6 +148,23 @@ static void AvailableMetersPanel_addPlatformMeter(Panel* super, const MeterClass
    Panel_add(super, (Object*) ListItem_new(label, offset << 16));
 }
 
+#ifdef BUILD_WITH_NVIDIA
+// Handle (&NVGPUMeter_class) entries in the AvailableMetersPanel — one per GPU.
+static void AvailableMetersPanel_addNVGPUMeters(Panel* super, const MeterClass* type, unsigned int offset) {
+   unsigned int gpuCount = NVGPUMeter_detectGPUs();
+   char buffer[96];
+   for (unsigned int i = 0; i < gpuCount; i++) {
+      const char* name = NVGPUMeter_gpuName(i);
+      if (name)
+         xSnprintf(buffer, sizeof(buffer), "%s %u  %s", type->uiName, i, name);
+      else
+         xSnprintf(buffer, sizeof(buffer), "%s %u", type->uiName, i);
+      /* ListItem key: Platform_meterTypes index in high 16 bits, 1-based GPU param in low 16. */
+      Panel_add(super, (Object*) ListItem_new(buffer, (offset << 16) | (i + 1)));
+   }
+}
+#endif
+
 AvailableMetersPanel* AvailableMetersPanel_new(Machine* host, Header* header, size_t columns, MetersPanel** meterPanels, ScreenManager* scr) {
    AvailableMetersPanel* this = AllocThis(AvailableMetersPanel);
    Panel* super = &this->super;
@@ -167,6 +188,10 @@ AvailableMetersPanel* AvailableMetersPanel_new(Machine* host, Header* header, si
       assert(type != &CPUMeter_class);
       if (type == &DynamicMeter_class)
          AvailableMetersPanel_addDynamicMeters(super, host->settings, i);
+#ifdef BUILD_WITH_NVIDIA
+      else if (type == &NVGPUMeter_class)
+         AvailableMetersPanel_addNVGPUMeters(super, type, i);
+#endif
       else
          AvailableMetersPanel_addPlatformMeter(super, type, i);
    }

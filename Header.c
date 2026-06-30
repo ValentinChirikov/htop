@@ -27,6 +27,10 @@ in the source distribution for its full text.
 #include "Settings.h"
 #include "XUtils.h"
 
+#ifdef BUILD_WITH_NVIDIA
+#include "linux/NVGPU.h"
+#endif
+
 
 Header* Header_new(Machine* host, HeaderLayout hLayout) {
    Header* this = xCalloc(1, sizeof(Header));
@@ -161,7 +165,13 @@ void Header_writeBackToSettings(const Header* this) {
             xAsprintf(&name, "%s(%s)", As_Meter(meter)->name, dynamic);
          } else if (meter->param && As_Meter(meter) == &CPUMeter_class) {
             xAsprintf(&name, "%s(%u)", As_Meter(meter)->name, meter->param);
-         } else {
+         }
+#ifdef BUILD_WITH_NVIDIA
+         else if (meter->param && As_Meter(meter) == &NVGPUMeter_class) {
+            xAsprintf(&name, "%s(%u)", As_Meter(meter)->name, meter->param);
+         }
+#endif
+         else {
             xAsprintf(&name, "%s", As_Meter(meter)->name);
          }
          colSettings->names[i] = name;

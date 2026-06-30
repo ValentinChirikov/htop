@@ -106,7 +106,7 @@ static void nvmlFetchValues(void) {
 /* ---- Meter: updateValues ---- */
 
 static void NVGPUMeter_updateValues(Meter* this) {
-   unsigned int gpuIndex = this->param - 1; /* param is 1-based (0 = summary) */
+   unsigned int gpuIndex = this->param - 1; /* param is 1-based (param 0 is legacy/never created by the UI) */
 
    if (!nvmlInitialized || !nvmlInitLibrary() || gpuIndex >= nvmlDeviceCount || !nvmlDevices[gpuIndex]) {
       xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "N/A");
@@ -140,9 +140,10 @@ static void NVGPUMeter_updateValues(Meter* this) {
    if (isNonnegative(this->values[1])) {
       char memUsed[16];
       char memTotal[16];
-      Meter_humanUnit(memUsed, NVGPUMeter_engineData[gpuIndex].usedMem / (1024.0 * 1024.0), sizeof(memUsed));
-      Meter_humanUnit(memTotal, NVGPUMeter_engineData[gpuIndex].totalMem / (1024.0 * 1024.0), sizeof(memTotal));
-      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%s Mem %s/%sMiB %.1f%%",
+      /* Meter_humanUnit takes a value in KiB and appends its own unit suffix. */
+      Meter_humanUnit(memUsed, NVGPUMeter_engineData[gpuIndex].usedMem / 1024.0, sizeof(memUsed));
+      Meter_humanUnit(memTotal, NVGPUMeter_engineData[gpuIndex].totalMem / 1024.0, sizeof(memTotal));
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%s Mem %s/%s %.1f%%",
          utilBuf, memUsed, memTotal, this->values[1]);
    } else {
       xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%s Mem N/A", utilBuf);
@@ -169,12 +170,12 @@ static void NVGPUMeter_display(const Object* cast, RichString* out) {
    RichString_appendnAscii(out, CRT_colors[GPU_ENGINE_1], buffer, written);
 
    if (isNonnegative(this->values[1])) {
-      Meter_humanUnit(buffer, NVGPUMeter_engineData[gpuIndex].usedMem / (1024.0 * 1024.0), sizeof(buffer));
+      /* Meter_humanUnit takes a value in KiB and appends its own unit suffix. */
+      Meter_humanUnit(buffer, NVGPUMeter_engineData[gpuIndex].usedMem / 1024.0, sizeof(buffer));
       int memLen = strlen(buffer);
-      xSnprintf(buffer + memLen, sizeof(buffer) - memLen, "MiB");
-      written = xSnprintf(buffer + memLen + 3, sizeof(buffer) - memLen - 3, "%.1f%%", this->values[1]);
+      written = xSnprintf(buffer + memLen, sizeof(buffer) - memLen, " %.1f%%", this->values[1]);
       RichString_appendAscii(out, CRT_colors[METER_TEXT], " Mem ");
-      RichString_appendnAscii(out, CRT_colors[GPU_ENGINE_2], buffer, memLen + 3 + written);
+      RichString_appendnAscii(out, CRT_colors[BAR_SHADOW], buffer, memLen + written);
    } else {
       RichString_appendAscii(out, CRT_colors[METER_TEXT], " Mem N/A");
    }
@@ -188,14 +189,15 @@ static void NVGPUMeter_init(Meter* this) {
 
    nvmlInitLibrary();
 
-   unsigned int gpuIndex = this->param - 1;
-   if (gpuIndex < nvmlDeviceCount && NVGPUMeter_engineData[gpuIndex].name) {
-      Meter_setCaption(this, NVGPUMeter_engineData[gpuIndex].name);
-   } else {
-      char caption[16];
-      xSnprintf(caption, sizeof(caption), "GPU %u", gpuIndex);
-      Meter_setCaption(this, caption);
+   /* param is 1-based (param 0 is reserved/legacy and never created by the UI). */
+   if (this->param > 0) {
+      unsigned int gpuIndex = this->param - 1;
+      if (gpuIndex < nvmlDeviceCount && NVGPUMeter_engineData[gpuIndex].name) {
+         Meter_setCaption(this, NVGPUMeter_engineData[gpuIndex].name);
+         return;
+      }
    }
+   Meter_setCaption(this, "GPU");
 }
 
 static void NVGPUMeter_done(Meter* this) {
@@ -209,7 +211,10 @@ static void NVGPUMeter_done(Meter* this) {
 
 static void NVGPUMeter_getUiName(const Meter* this, char* buffer, size_t length) {
    assert(length > 0);
-   xSnprintf(buffer, length, "NVGPU %u", this->param - 1);
+   if (this->param > 0)
+      xSnprintf(buffer, length, "NVGPU %u", this->param - 1);
+   else
+      xSnprintf(buffer, length, "NVGPU");
 }
 
 
@@ -230,7 +235,7 @@ const MeterClass NVGPUMeter_class = {
    .maxItems = 2,
    .isPercentChart = true,
    .total = 100.0,
-   .attributes = (const int[]) { GPU_ENGINE_1, GPU_ENGINE_2 },
+   .attributes = (const int[]) { GPU_ENGINE_1, BAR_SHADOW },
    .name = "NVGPU",
    .uiName = "NVGPU",
    .caption = "GPU"
@@ -241,6 +246,20 @@ const MeterClass NVGPUMeter_class = {
 
 bool NVGPUMeter_active(void) {
    return activeMeters > 0;
+}
+
+
+/* ---- GPU discovery (used by AvailableMetersPanel to list per-GPU meters) ---- */
+
+unsigned int NVGPUMeter_detectGPUs(void) {
+   nvmlInitLibrary();
+   return nvmlDeviceCount;
+}
+
+const char* NVGPUMeter_gpuName(unsigned int gpuIndex) {
+   if (gpuIndex >= nvmlDeviceCount)
+      return NULL;
+   return NVGPUMeter_engineData[gpuIndex].name;
 }
 
 
@@ -258,9 +277,12 @@ void NVGPUMeter_shutdown(void) {
 }
 #else
 
-/* Stub when NVIDIA support is not enabled. */
+/* Stub when NVIDIA support is not enabled. The meter class is not registered
+ * (see Platform_meterTypes[]), so these symbols are never used at runtime. */
 NVGPUMeterInfo NVGPUMeter_engineData[NVGPU_MAX_GPUS];
 const MeterClass NVGPUMeter_class = { 0 };
 bool NVGPUMeter_active(void) { return false; }
+unsigned int NVGPUMeter_detectGPUs(void) { return 0; }
+const char* NVGPUMeter_gpuName(unsigned int gpuIndex) { (void)gpuIndex; return NULL; }
 
 #endif

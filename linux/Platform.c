@@ -278,7 +278,9 @@ const MeterClass* const Platform_meterTypes[] = {
    &OpenRCUserMeter_class,
    &FileDescriptorMeter_class,
    &GPUMeter_class,
+#ifdef BUILD_WITH_NVIDIA
    &NVGPUMeter_class,
+#endif
    NULL
 };
 
