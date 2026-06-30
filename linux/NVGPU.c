@@ -155,9 +155,10 @@ static void NVGPUMeter_updateValues(Meter* this) {
 
 static void NVGPUMeter_display(const Object* cast, RichString* out) {
    const Meter* this = (const Meter*)cast;
-   unsigned int gpuIndex = this->param - 1;
 
-   if (!isNonnegative(this->values[0])) {
+   /* param is 1-based (param 0 is reserved/legacy and never created by the UI). */
+   unsigned int gpuIndex = this->param - 1;
+   if (this->param == 0 || gpuIndex >= nvmlDeviceCount || !isNonnegative(this->values[0])) {
       RichString_appendAscii(out, CRT_colors[METER_SHADOW], " N/A");
       return;
    }

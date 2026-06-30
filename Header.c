@@ -163,15 +163,13 @@ void Header_writeBackToSettings(const Header* this) {
          if (meter->param && As_Meter(meter) == &DynamicMeter_class) {
             const char* dynamic = DynamicMeter_lookup(settings->dynamicMeters, meter->param);
             xAsprintf(&name, "%s(%s)", As_Meter(meter)->name, dynamic);
-         } else if (meter->param && As_Meter(meter) == &CPUMeter_class) {
-            xAsprintf(&name, "%s(%u)", As_Meter(meter)->name, meter->param);
-         }
+         } else if (meter->param && (As_Meter(meter) == &CPUMeter_class
 #ifdef BUILD_WITH_NVIDIA
-         else if (meter->param && As_Meter(meter) == &NVGPUMeter_class) {
-            xAsprintf(&name, "%s(%u)", As_Meter(meter)->name, meter->param);
-         }
+                  || As_Meter(meter) == &NVGPUMeter_class
 #endif
-         else {
+            )) {
+            xAsprintf(&name, "%s(%u)", As_Meter(meter)->name, meter->param);
+         } else {
             xAsprintf(&name, "%s", As_Meter(meter)->name);
          }
          colSettings->names[i] = name;
