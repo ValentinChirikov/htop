@@ -198,6 +198,7 @@ linux_platform_headers = \
 	linux/LinuxMachine.h \
 	linux/LinuxProcess.h \
 	linux/LinuxProcessTable.h \
+	linux/NVGPU.h \
 	linux/OpenRCMeter.h \
 	linux/Platform.h \
 	linux/PressureStallMeter.h \
@@ -225,6 +226,7 @@ linux_platform_sources = \
 	linux/LinuxMachine.c \
 	linux/LinuxProcess.c \
 	linux/LinuxProcessTable.c \
+	linux/NVGPU.c \
 	linux/OpenRCMeter.c \
 	linux/Platform.c \
 	linux/PressureStallMeter.c \

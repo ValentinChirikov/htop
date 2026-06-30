@@ -28,4 +28,10 @@ extern const MeterClass NVGPUMeter_class;
 
 bool NVGPUMeter_active(void);
 
+#ifdef BUILD_WITH_NVIDIA
+void NVGPUMeter_shutdown(void);
+#else
+__attribute__((weak)) void NVGPUMeter_shutdown(void) {}
+#endif /* BUILD_WITH_NVIDIA */
+
 #endif /* HEADER_NVGPU */

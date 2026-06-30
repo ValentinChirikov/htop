@@ -53,6 +53,7 @@ in the source distribution for its full text.
 #include "linux/IOPriorityPanel.h"
 #include "linux/LinuxMachine.h"
 #include "linux/LinuxProcess.h"
+#include "linux/NVGPU.h"
 #include "linux/OpenRCMeter.h"
 #include "linux/SELinuxMeter.h"
 #include "linux/SystemdMeter.h"
@@ -1171,5 +1172,8 @@ bool Platform_init(void) {
 void Platform_done(void) {
 #ifdef HAVE_SENSORS_SENSORS_H
    LibSensors_cleanup();
+#endif
+#ifdef BUILD_WITH_NVIDIA
+   NVGPUMeter_shutdown();
 #endif
 }
