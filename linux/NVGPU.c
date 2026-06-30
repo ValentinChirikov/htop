@@ -31,12 +31,7 @@ static nvmlDevice_t nvmlDevices[NVGPU_MAX_GPUS];
 static unsigned int nvmlDeviceCount = 0;
 static bool nvmlInitialized = false;
 
-typedef struct {
-   unsigned long long prevPeriod;
-   unsigned int prevUtilization;
-} NvmlUtilHistory;
-
-static NvmlUtilHistory nvmlUtilHistory[NVGPU_MAX_GPUS];
+/* No history state needed — nvmlDeviceGetUtilizationRates returns instantaneous %. */
 
 NVGPUMeterInfo NVGPUMeter_engineData[NVGPU_MAX_GPUS];
 static unsigned int activeMeters = 0;
@@ -63,8 +58,6 @@ static bool nvmlInitLibrary(void) {
 
    for (unsigned int i = 0; i < count; i++) {
       nvmlDevices[i] = NULL;
-      nvmlUtilHistory[i].prevPeriod = 0;
-      nvmlUtilHistory[i].prevUtilization = 0;
       NVGPUMeter_engineData[i].utilization = -1.0;
       NVGPUMeter_engineData[i].totalMem = 0;
       NVGPUMeter_engineData[i].usedMem = 0;
@@ -88,49 +81,23 @@ static void nvmlFetchValues(void) {
    if (!nvmlInitialized || nvmlDeviceCount == 0)
       return;
 
-   static bool firstSample = true;
-   if (firstSample) {
-      for (unsigned int i = 0; i < nvmlDeviceCount; i++)
-         nvmlUtilHistory[i].prevPeriod = 0;
-      firstSample = false;
-   }
-
-   /* Query memory info */
+   /* Query memory info and utilization rates */
    for (unsigned int i = 0; i < nvmlDeviceCount; i++) {
-      if (!nvmlDevices[i])
+      nvmlDevice_t dev = nvmlDevices[i];
+      if (!dev)
          continue;
 
       nvmlMemory_t memInfo;
-      if (nvmlDeviceGetMemoryInfo(nvmlDevices[i], &memInfo) == 0) {
+      if (nvmlDeviceGetMemoryInfo(dev, &memInfo) == 0) {
          NVGPUMeter_engineData[i].totalMem = memInfo.total;
          NVGPUMeter_engineData[i].usedMem = memInfo.used;
       }
-   }
 
-   /* Query utilization */
-   for (unsigned int i = 0; i < nvmlDeviceCount; i++) {
-      if (!nvmlDevices[i])
-         continue;
-
-      unsigned int count = 1;
-      nvmlProcessUtilizationSample_t sample;
-      memset(&sample, 0, sizeof(sample));
-
-      nvmlReturn_t ret = nvmlDeviceGetProcessUtilization(
-         nvmlDevices[i], &sample, &count, 1000);
-
-      /* lastCounterPeriod is cumulative GPU time in milliseconds since driver load.
-       * The formula computes utilization as the fraction of wall-clock time the GPU
-       * spent processing work during the sampling interval. */
-      if (ret == 0 && count > 0 && sample.lastCounterPeriod > nvmlUtilHistory[i].prevPeriod) {
-         unsigned long long periodDelta = sample.lastCounterPeriod - nvmlUtilHistory[i].prevPeriod;
-         if (periodDelta > 0) {
-            int utilDelta = sample.utilization - nvmlUtilHistory[i].prevUtilization;
-            NVGPUMeter_engineData[i].utilization =
-               CLAMP(100.0 * utilDelta / periodDelta * 1000.0, 0.0, 100.0);
-         }
-         nvmlUtilHistory[i].prevPeriod = sample.lastCounterPeriod;
-         nvmlUtilHistory[i].prevUtilization = sample.utilization;
+      /* nvmlDeviceGetUtilizationRates returns % of time during which GPU
+       * cores/memory were active over the past sample period. */
+      nvmlUtilization_t rates;
+      if (nvmlDeviceGetUtilizationRates(dev, &rates) == 0) {
+         NVGPUMeter_engineData[i].utilization = (double)rates.gpu;
       }
    }
 }
@@ -284,7 +251,7 @@ void NVGPUMeter_shutdown(void) {
       nvmlShutdown();
       nvmlInitialized = false;
       for (unsigned int i = 0; i < nvmlDeviceCount; i++) {
-         free((void*)NVGPUMeter_engineData[i].name);
+         free(NVGPUMeter_engineData[i].name);
          NVGPUMeter_engineData[i].name = NULL;
       }
    }

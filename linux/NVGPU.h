@@ -16,7 +16,7 @@ in the source distribution for its full text.
 #define NVGPU_MAX_GPUS 8
 
 typedef struct {
-   const char* name;
+   char* name;
    unsigned long long totalMem;
    unsigned long long usedMem;
    double utilization;
