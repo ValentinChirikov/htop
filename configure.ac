@@ -1677,7 +1677,46 @@ if test "$enable_sensors" = yes || test "$my_htop_platform" = freebsd; then
 fi
 
 # ----------------------------------------------------------------------
+# NVIDIA NVML support (Linux only)
+# ----------------------------------------------------------------------
 
+AC_ARG_ENABLE(
+   [nvidia],
+   [AS_HELP_STRING(
+      [--enable-nvidia],
+      [enable NVIDIA GPU monitoring via NVML; requires libnvidia-ml @<:@default=check@:>@]
+   )],
+   [],
+   [enable_nvidia=check]
+)
+if test "$my_htop_platform" = linux; then
+case "$enable_nvidia" in
+   no)
+      ;;
+   check)
+      enable_nvidia=yes
+      htop_save_LIBS=$LIBS
+      LIBS="-lnvidia-ml $LIBS"
+      AC_CHECK_FUNC([nvmlInit], [], [enable_nvidia=no])
+      LIBS=$htop_save_LIBS
+      AC_CHECK_HEADERS([nvml.h], [], [enable_nvidia=no])
+      ;;
+   yes)
+      htop_save_LIBS=$LIBS
+      LIBS="-lnvidia-ml $LIBS"
+      AC_CHECK_FUNC([nvmlInit], [], [AC_MSG_ERROR([cannot find required library libnvidia-ml])])
+      LIBS=$htop_save_LIBS
+      AC_CHECK_HEADERS([nvml.h], [], [AC_MSG_ERROR([cannot find required header file nvml.h])])
+      ;;
+   *)
+      AC_MSG_ERROR([bad value '$enable_nvidia' for --enable-nvidia])
+      ;;
+esac
+fi
+if test "$enable_nvidia" = yes && test "$my_htop_platform" = linux; then
+   AC_DEFINE([BUILD_WITH_NVIDIA], [1], [Define if NVIDIA GPU monitoring should be enabled.])
+fi
+AM_CONDITIONAL([BUILD_WITH_NVIDIA], [test "$enable_nvidia" = yes && test "$my_htop_platform" = linux])
 
 # ----------------------------------------------------------------------
 # Checks for compiler warnings.
