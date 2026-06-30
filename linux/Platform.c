@@ -278,6 +278,7 @@ const MeterClass* const Platform_meterTypes[] = {
    &OpenRCUserMeter_class,
    &FileDescriptorMeter_class,
    &GPUMeter_class,
+   &NVGPUMeter_class,
    NULL
 };
 
