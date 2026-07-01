@@ -20,7 +20,9 @@ in the source distribution for its full text.
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include "CRT.h"
 #include "Object.h"
+#include "RichString.h"
 #include "XUtils.h"
 
 
@@ -257,8 +259,41 @@ static void LlamaCppMeter_updateValues(Meter* this) {
    }
 
    xSnprintf(this->txtBuffer, sizeof(this->txtBuffer),
-      "tg %.1f pp %.1f t/s  req %.0f/%.0f  ntok %.0f",
+      "tg: %.1f pp: %.1f t/s  req: %.0f/%.0f  ntok: %.0f",
       valTg, valPp, valProc, valDef, valNTok);
+}
+
+
+static void LlamaCppMeter_display(const Object* cast, RichString* out) {
+   const Meter* this = (const Meter*)cast;
+   (void)this;
+
+   if (urlState != 1 || !haveData) {
+      RichString_appendAscii(out, CRT_colors[METER_SHADOW], "N/A");
+      return;
+   }
+
+   char buffer[32];
+   int written;
+
+   RichString_appendAscii(out, CRT_colors[METER_TEXT], "tg: ");
+   written = xSnprintf(buffer, sizeof(buffer), "%.1f", valTg);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+
+   RichString_appendAscii(out, CRT_colors[METER_TEXT], " pp: ");
+   written = xSnprintf(buffer, sizeof(buffer), "%.1f", valPp);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+
+   RichString_appendAscii(out, CRT_colors[METER_TEXT], " t/s  req: ");
+   written = xSnprintf(buffer, sizeof(buffer), "%.0f", valProc);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+   RichString_appendAscii(out, CRT_colors[METER_TEXT], "/");
+   written = xSnprintf(buffer, sizeof(buffer), "%.0f", valDef);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+
+   RichString_appendAscii(out, CRT_colors[METER_TEXT], "  ntok: ");
+   written = xSnprintf(buffer, sizeof(buffer), "%.0f", valNTok);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
 }
 
 
@@ -268,6 +303,7 @@ const MeterClass LlamaCppMeter_class = {
    .super = {
       .extends = Class(Meter),
       .delete = Meter_delete,
+      .display = LlamaCppMeter_display,
    },
    .updateValues = LlamaCppMeter_updateValues,
    .defaultMode = TEXT_METERMODE,
