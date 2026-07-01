@@ -162,6 +162,15 @@ To install on the local system run `make install`. By default `make install` ins
     enable Linux delay accounting support
     - dependencies: *libnl-3-dev*(build-time) and *libnl-genl-3-dev*(build-time), at runtime *libnl-3* and *libnl-genl-3* are loaded via `dlopen(3)` if available and requested
     - default: *check*
+  * `--enable-nvidia`:
+    enable per-GPU NVIDIA monitoring meters (utilization, memory, power, temperature) via NVML
+    - dependency: *libnvidia-ml*
+    - default: *check*
+    - adds meters *NVGPU*, *NVGPU Power*, *NVGPU Temp*; the NVGPU meter can also show inline temperature when the "Also show GPU temperature" display option is enabled
+  * an IPMI DCMI power meter that reads whole-server power from the BMC (`/dev/ipmi0`) is always compiled in on Linux
+    - runtime requirement: read/write access to `/dev/ipmi0` (typically via a `udev` rule granting an `ipmi` group with `MODE="0660"`); otherwise the meter renders `N/A`
+  * a `llama.cpp` throughput meter is always compiled in on Linux
+    - enabled at runtime by setting `HTOP_LLAMACPP_METRICS_URL` to the server's Prometheus endpoint, e.g. `http://127.0.0.1:2233/metrics`; renders `N/A` when unset or unreachable
 
 
 ## Runtime dependencies:
