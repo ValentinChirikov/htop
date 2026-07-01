@@ -35,6 +35,10 @@ in the source distribution for its full text.
 /* Reuse the cached scrape if the last one is younger than this. */
 #define LLAMACPP_MIN_INTERVAL_MS   900
 
+/* If we haven't had a successful scrape in this many ms, drop the cached
+ * reading and show N/A. Below this threshold, transient failures are hidden. */
+#define LLAMACPP_STALE_MS          10000
+
 
 /* Parsed endpoint. urlState: 0 unchecked, 1 valid, -1 disabled/unsupported. */
 static int urlState = 0;
@@ -49,7 +53,8 @@ static double valPp = 0.0;      /* prompt tokens/s */
 static double valProc = 0.0;    /* requests processing */
 static double valDef = 0.0;     /* requests deferred */
 static double valNTok = 0.0;    /* max tokens seen */
-static long long lastQueryMs = -1;
+static long long lastQueryMs = -1;  /* last scrape attempt */
+static long long lastGoodMs = -1;   /* last successful scrape */
 
 
 static long long monotonicMs(void) {
@@ -218,30 +223,33 @@ static bool findMetric(const char* body, const char* name, double* out) {
 
 static void llamaRefresh(void) {
    long long now = monotonicMs();
-   if (now >= 0 && lastQueryMs >= 0 && now - lastQueryMs < LLAMACPP_MIN_INTERVAL_MS)
+   /* Throttle only while we already have fresh data; failed scrapes get to
+    * retry on the next UI tick instead of holding a stale N/A. */
+   if (haveData && now >= 0 && lastQueryMs >= 0 && now - lastQueryMs < LLAMACPP_MIN_INTERVAL_MS)
       return;
    lastQueryMs = now;
 
    char buf[8192];
-   if (llamaHttpGet(buf, sizeof(buf)) <= 0) {
-      haveData = false;
-      return;
-   }
-
    double tg, pp;
-   /* These two gauges are always present; the rest are best-effort. */
-   if (!findMetric(buf, "llamacpp:predicted_tokens_seconds", &tg) ||
-       !findMetric(buf, "llamacpp:prompt_tokens_seconds", &pp)) {
-      haveData = false;
+   bool ok = (llamaHttpGet(buf, sizeof(buf)) > 0)
+      && findMetric(buf, "llamacpp:predicted_tokens_seconds", &tg)
+      && findMetric(buf, "llamacpp:prompt_tokens_seconds", &pp);
+
+   if (ok) {
+      valTg = tg;
+      valPp = pp;
+      if (!findMetric(buf, "llamacpp:requests_processing", &valProc)) valProc = 0.0;
+      if (!findMetric(buf, "llamacpp:requests_deferred", &valDef)) valDef = 0.0;
+      if (!findMetric(buf, "llamacpp:n_tokens_max", &valNTok)) valNTok = 0.0;
+      haveData = true;
+      lastGoodMs = now;
       return;
    }
 
-   valTg = tg;
-   valPp = pp;
-   if (!findMetric(buf, "llamacpp:requests_processing", &valProc)) valProc = 0.0;
-   if (!findMetric(buf, "llamacpp:requests_deferred", &valDef)) valDef = 0.0;
-   if (!findMetric(buf, "llamacpp:n_tokens_max", &valNTok)) valNTok = 0.0;
-   haveData = true;
+   /* Keep the previous reading across brief failures; only give up after the
+    * staleness cap so a single slow response doesn't flash N/A. */
+   if (haveData && (lastGoodMs < 0 || (now >= 0 && now - lastGoodMs > LLAMACPP_STALE_MS)))
+      haveData = false;
 }
 
 
