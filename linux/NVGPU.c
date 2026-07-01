@@ -61,6 +61,8 @@ static bool nvmlInitLibrary(void) {
       NVGPUMeter_engineData[i].utilization = -1.0;
       NVGPUMeter_engineData[i].totalMem = 0;
       NVGPUMeter_engineData[i].usedMem = 0;
+      NVGPUMeter_engineData[i].powerUsage = -1.0;
+      NVGPUMeter_engineData[i].powerLimit = -1.0;
 
       if (nvmlDeviceGetHandleByIndex(i, &nvmlDevices[i]) == 0) {
          char name[80] = {0};
@@ -98,6 +100,18 @@ static void nvmlFetchValues(void) {
       nvmlUtilization_t rates;
       if (nvmlDeviceGetUtilizationRates(dev, &rates) == 0) {
          NVGPUMeter_engineData[i].utilization = (double)rates.gpu;
+      }
+
+      /* nvmlDeviceGetPowerUsage / power limits report milliwatts. */
+      unsigned int powerMilliW = 0;
+      if (nvmlDeviceGetPowerUsage(dev, &powerMilliW) == 0) {
+         NVGPUMeter_engineData[i].powerUsage = powerMilliW / 1000.0;
+      }
+
+      unsigned int limitMilliW = 0;
+      if (nvmlDeviceGetEnforcedPowerLimit(dev, &limitMilliW) == 0 ||
+          nvmlDeviceGetPowerManagementLimit(dev, &limitMilliW) == 0) {
+         NVGPUMeter_engineData[i].powerLimit = limitMilliW / 1000.0;
       }
    }
 }
@@ -243,6 +257,122 @@ const MeterClass NVGPUMeter_class = {
 };
 
 
+/* ---- Power meter: default bar total (Watts) when the GPU reports no limit ---- */
+
+#define NVGPU_POWER_DEFAULT_TOTAL 300.0
+
+
+/* ---- Power meter: updateValues ---- */
+
+static void NVGPUPowerMeter_updateValues(Meter* this) {
+   unsigned int gpuIndex = this->param - 1; /* param is 1-based (param 0 is legacy/never created by the UI) */
+
+   if (this->param == 0 || !nvmlInitLibrary() || gpuIndex >= nvmlDeviceCount || !nvmlDevices[gpuIndex]) {
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "N/A");
+      this->values[0] = NAN;
+      return;
+   }
+
+   nvmlFetchValues();
+
+   double power = NVGPUMeter_engineData[gpuIndex].powerUsage;
+   if (power < 0.0) {
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "N/A");
+      this->values[0] = NAN;
+      return;
+   }
+
+   double limit = NVGPUMeter_engineData[gpuIndex].powerLimit;
+   this->total = (limit > 0.0) ? limit : NVGPU_POWER_DEFAULT_TOTAL;
+   this->values[0] = power;
+
+   if (limit > 0.0)
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%.0fW / %.0fW", power, limit);
+   else
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%.0fW", power);
+}
+
+
+/* ---- Power meter: display ---- */
+
+static void NVGPUPowerMeter_display(const Object* cast, RichString* out) {
+   const Meter* this = (const Meter*)cast;
+
+   /* param is 1-based (param 0 is reserved/legacy and never created by the UI). */
+   unsigned int gpuIndex = this->param - 1;
+   if (this->param == 0 || gpuIndex >= nvmlDeviceCount || !isNonnegative(this->values[0])) {
+      RichString_appendAscii(out, CRT_colors[METER_SHADOW], " N/A");
+      return;
+   }
+
+   char buffer[32];
+   int written;
+
+   RichString_appendAscii(out, CRT_colors[METER_TEXT], ":");
+   written = xSnprintf(buffer, sizeof(buffer), "%.0fW", this->values[0]);
+   RichString_appendnAscii(out, CRT_colors[GPU_ENGINE_1], buffer, written);
+
+   double limit = NVGPUMeter_engineData[gpuIndex].powerLimit;
+   if (limit > 0.0) {
+      written = xSnprintf(buffer, sizeof(buffer), " / %.0fW", limit);
+      RichString_appendnAscii(out, CRT_colors[METER_TEXT], buffer, written);
+   }
+}
+
+
+/* ---- Power meter: init ---- */
+
+static void NVGPUPowerMeter_init(Meter* this) {
+   activeMeters++;
+
+   nvmlInitLibrary();
+
+   /* param is 1-based (param 0 is reserved/legacy and never created by the UI). */
+   if (this->param > 0) {
+      unsigned int gpuIndex = this->param - 1;
+      if (gpuIndex < nvmlDeviceCount && NVGPUMeter_engineData[gpuIndex].name) {
+         Meter_setCaption(this, NVGPUMeter_engineData[gpuIndex].name);
+         return;
+      }
+   }
+   Meter_setCaption(this, "GPU Power");
+}
+
+
+/* ---- Power meter: getUiName ---- */
+
+static void NVGPUPowerMeter_getUiName(const Meter* this, char* buffer, size_t length) {
+   assert(length > 0);
+   if (this->param > 0)
+      xSnprintf(buffer, length, "NVGPU Power %u", this->param - 1);
+   else
+      xSnprintf(buffer, length, "NVGPU Power");
+}
+
+
+/* ---- Power meter class definition ---- */
+
+const MeterClass NVGPUPowerMeter_class = {
+   .super = {
+      .extends = Class(Meter),
+      .delete = Meter_delete,
+      .display = NVGPUPowerMeter_display,
+   },
+   .init = NVGPUPowerMeter_init,
+   .done = NVGPUMeter_done,
+   .getUiName = NVGPUPowerMeter_getUiName,
+   .updateValues = NVGPUPowerMeter_updateValues,
+   .defaultMode = BAR_METERMODE,
+   .supportedModes = METERMODE_DEFAULT_SUPPORTED,
+   .maxItems = 1,
+   .total = NVGPU_POWER_DEFAULT_TOTAL,
+   .attributes = (const int[]) { GPU_ENGINE_1 },
+   .name = "NVGPUPower",
+   .uiName = "NVGPU Power",
+   .caption = "GPU Power"
+};
+
+
 /* ---- Active meter check ---- */
 
 bool NVGPUMeter_active(void) {
@@ -282,6 +412,7 @@ void NVGPUMeter_shutdown(void) {
  * (see Platform_meterTypes[]), so these symbols are never used at runtime. */
 NVGPUMeterInfo NVGPUMeter_engineData[NVGPU_MAX_GPUS];
 const MeterClass NVGPUMeter_class = { 0 };
+const MeterClass NVGPUPowerMeter_class = { 0 };
 bool NVGPUMeter_active(void) { return false; }
 unsigned int NVGPUMeter_detectGPUs(void) { return 0; }
 const char* NVGPUMeter_gpuName(unsigned int gpuIndex) { (void)gpuIndex; return NULL; }

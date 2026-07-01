@@ -20,11 +20,15 @@ typedef struct {
    unsigned long long totalMem;
    unsigned long long usedMem;
    double utilization;
+   double powerUsage; /* current draw in Watts, or -1.0 if unavailable */
+   double powerLimit; /* enforced power cap in Watts, or -1.0 if unavailable */
 } NVGPUMeterInfo;
 
 extern NVGPUMeterInfo NVGPUMeter_engineData[NVGPU_MAX_GPUS];
 
 extern const MeterClass NVGPUMeter_class;
+
+extern const MeterClass NVGPUPowerMeter_class;
 
 bool NVGPUMeter_active(void);
 

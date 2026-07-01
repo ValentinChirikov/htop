@@ -189,7 +189,7 @@ AvailableMetersPanel* AvailableMetersPanel_new(Machine* host, Header* header, si
       if (type == &DynamicMeter_class)
          AvailableMetersPanel_addDynamicMeters(super, host->settings, i);
 #ifdef BUILD_WITH_NVIDIA
-      else if (type == &NVGPUMeter_class)
+      else if (type == &NVGPUMeter_class || type == &NVGPUPowerMeter_class)
          AvailableMetersPanel_addNVGPUMeters(super, type, i);
 #endif
       else

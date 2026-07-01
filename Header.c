@@ -166,6 +166,7 @@ void Header_writeBackToSettings(const Header* this) {
          } else if (meter->param && (As_Meter(meter) == &CPUMeter_class
 #ifdef BUILD_WITH_NVIDIA
                   || As_Meter(meter) == &NVGPUMeter_class
+                  || As_Meter(meter) == &NVGPUPowerMeter_class
 #endif
             )) {
             xAsprintf(&name, "%s(%u)", As_Meter(meter)->name, meter->param);

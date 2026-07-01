@@ -1,6 +1,7 @@
 What's new in version 3.5.1
 
 * Linux: Add NVGPUMeter for per-GPU NVIDIA monitoring via NVML (--enable-nvidia)
+* Linux: Add NVGPU Power meter reporting per-GPU power draw and limit in Watts (--enable-nvidia)
 * Consolidate ClockMeter code into DateTimeMeter code
 * Darwin: Fix unsigned underflow in memory meter on ARM64 (Apple Silicon 16K pages showing ~64TB used)
 * Linux/PCP: Replace M_SHARE (SHR) with M_PRIV (PRIV) in default Main screen columns
