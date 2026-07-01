@@ -22,6 +22,8 @@ typedef struct {
    double utilization;
    double powerUsage; /* current draw in Watts, or -1.0 if unavailable */
    double powerLimit; /* enforced power cap in Watts, or -1.0 if unavailable */
+   double temperature; /* GPU die temperature in °C, or -1.0 if unavailable */
+   double tempThreshold; /* slowdown threshold in °C, or -1.0 if unavailable */
 } NVGPUMeterInfo;
 
 extern NVGPUMeterInfo NVGPUMeter_engineData[NVGPU_MAX_GPUS];
@@ -29,6 +31,8 @@ extern NVGPUMeterInfo NVGPUMeter_engineData[NVGPU_MAX_GPUS];
 extern const MeterClass NVGPUMeter_class;
 
 extern const MeterClass NVGPUPowerMeter_class;
+
+extern const MeterClass NVGPUTempMeter_class;
 
 bool NVGPUMeter_active(void);
 

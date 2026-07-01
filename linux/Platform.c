@@ -281,6 +281,7 @@ const MeterClass* const Platform_meterTypes[] = {
 #ifdef BUILD_WITH_NVIDIA
    &NVGPUMeter_class,
    &NVGPUPowerMeter_class,
+   &NVGPUTempMeter_class,
 #endif
    NULL
 };

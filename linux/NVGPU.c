@@ -18,10 +18,12 @@ in the source distribution for its full text.
 #include <nvml.h>
 
 #include "CRT.h"
+#include "Machine.h"
 #include "Macros.h"
 #include "Object.h"
 #include "Platform.h"
 #include "RichString.h"
+#include "Settings.h"
 #include "XUtils.h"
 
 
@@ -63,6 +65,8 @@ static bool nvmlInitLibrary(void) {
       NVGPUMeter_engineData[i].usedMem = 0;
       NVGPUMeter_engineData[i].powerUsage = -1.0;
       NVGPUMeter_engineData[i].powerLimit = -1.0;
+      NVGPUMeter_engineData[i].temperature = -1.0;
+      NVGPUMeter_engineData[i].tempThreshold = -1.0;
 
       if (nvmlDeviceGetHandleByIndex(i, &nvmlDevices[i]) == 0) {
          char name[80] = {0};
@@ -113,6 +117,15 @@ static void nvmlFetchValues(void) {
           nvmlDeviceGetPowerManagementLimit(dev, &limitMilliW) == 0) {
          NVGPUMeter_engineData[i].powerLimit = limitMilliW / 1000.0;
       }
+
+      /* nvmlDeviceGetTemperature reports the GPU die temperature in °C. */
+      unsigned int tempC = 0;
+      if (nvmlDeviceGetTemperature(dev, NVML_TEMPERATURE_GPU, &tempC) == 0)
+         NVGPUMeter_engineData[i].temperature = (double)tempC;
+
+      unsigned int thresholdC = 0;
+      if (nvmlDeviceGetTemperatureThreshold(dev, NVML_TEMPERATURE_THRESHOLD_SLOWDOWN, &thresholdC) == 0)
+         NVGPUMeter_engineData[i].tempThreshold = (double)thresholdC;
    }
 }
 
@@ -373,6 +386,151 @@ const MeterClass NVGPUPowerMeter_class = {
 };
 
 
+/* ---- Temperature meter: default bar total (°C) when the GPU reports no slowdown threshold ---- */
+
+#define NVGPU_TEMP_DEFAULT_TOTAL 100.0
+
+
+/* Respect the global degree-Fahrenheit setting when CPU temperature support is compiled in
+ * (the setting only exists then); otherwise report temperatures in Celsius. */
+static bool NVGPUTemp_useFahrenheit(const Meter* this) {
+#ifdef BUILD_WITH_CPU_TEMP
+   return this->host->settings->degreeFahrenheit;
+#else
+   (void)this;
+   return false;
+#endif
+}
+
+
+/* ---- Temperature meter: updateValues ---- */
+
+static void NVGPUTempMeter_updateValues(Meter* this) {
+   unsigned int gpuIndex = this->param - 1; /* param is 1-based (param 0 is legacy/never created by the UI) */
+
+   if (this->param == 0 || !nvmlInitLibrary() || gpuIndex >= nvmlDeviceCount || !nvmlDevices[gpuIndex]) {
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "N/A");
+      this->values[0] = NAN;
+      return;
+   }
+
+   nvmlFetchValues();
+
+   double temp = NVGPUMeter_engineData[gpuIndex].temperature;
+   if (temp < 0.0) {
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "N/A");
+      this->values[0] = NAN;
+      return;
+   }
+
+   double threshold = NVGPUMeter_engineData[gpuIndex].tempThreshold;
+   /* Scale the bar against the slowdown threshold so a fuller bar warns of impending throttling. */
+   this->total = (threshold > 0.0) ? threshold : NVGPU_TEMP_DEFAULT_TOTAL;
+   this->values[0] = temp;
+
+   bool fahrenheit = NVGPUTemp_useFahrenheit(this);
+   if (threshold > 0.0) {
+      if (fahrenheit)
+         xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%.0f%sF / %.0f%sF", temp * 9 / 5 + 32, CRT_degreeSign, threshold * 9 / 5 + 32, CRT_degreeSign);
+      else
+         xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%.0f%sC / %.0f%sC", temp, CRT_degreeSign, threshold, CRT_degreeSign);
+   } else if (fahrenheit) {
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%.0f%sF", temp * 9 / 5 + 32, CRT_degreeSign);
+   } else {
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%.0f%sC", temp, CRT_degreeSign);
+   }
+}
+
+
+/* ---- Temperature meter: display ---- */
+
+static void NVGPUTempMeter_display(const Object* cast, RichString* out) {
+   const Meter* this = (const Meter*)cast;
+
+   /* param is 1-based (param 0 is reserved/legacy and never created by the UI). */
+   unsigned int gpuIndex = this->param - 1;
+   if (this->param == 0 || gpuIndex >= nvmlDeviceCount || !isNonnegative(this->values[0])) {
+      RichString_appendAscii(out, CRT_colors[METER_SHADOW], " N/A");
+      return;
+   }
+
+   char buffer[32];
+   int written;
+   double temp = this->values[0];
+   bool fahrenheit = NVGPUTemp_useFahrenheit(this);
+
+   RichString_appendAscii(out, CRT_colors[METER_TEXT], ":");
+   if (fahrenheit)
+      written = xSnprintf(buffer, sizeof(buffer), "%.0f%sF", temp * 9 / 5 + 32, CRT_degreeSign);
+   else
+      written = xSnprintf(buffer, sizeof(buffer), "%.0f%sC", temp, CRT_degreeSign);
+   /* CRT_degreeSign is multibyte (°); use the wide append so the glyph decodes, as CPUMeter does. */
+   RichString_appendnWide(out, CRT_colors[METER_VALUE], buffer, written);
+
+   double threshold = NVGPUMeter_engineData[gpuIndex].tempThreshold;
+   if (threshold > 0.0) {
+      if (fahrenheit)
+         written = xSnprintf(buffer, sizeof(buffer), " / %.0f%sF", threshold * 9 / 5 + 32, CRT_degreeSign);
+      else
+         written = xSnprintf(buffer, sizeof(buffer), " / %.0f%sC", threshold, CRT_degreeSign);
+      RichString_appendnWide(out, CRT_colors[METER_TEXT], buffer, written);
+   }
+}
+
+
+/* ---- Temperature meter: init ---- */
+
+static void NVGPUTempMeter_init(Meter* this) {
+   activeMeters++;
+
+   nvmlInitLibrary();
+
+   /* param is 1-based (param 0 is reserved/legacy and never created by the UI). */
+   if (this->param > 0) {
+      unsigned int gpuIndex = this->param - 1;
+      if (gpuIndex < nvmlDeviceCount && NVGPUMeter_engineData[gpuIndex].name) {
+         Meter_setCaption(this, NVGPUMeter_engineData[gpuIndex].name);
+         return;
+      }
+   }
+   Meter_setCaption(this, "GPU Temp");
+}
+
+
+/* ---- Temperature meter: getUiName ---- */
+
+static void NVGPUTempMeter_getUiName(const Meter* this, char* buffer, size_t length) {
+   assert(length > 0);
+   if (this->param > 0)
+      xSnprintf(buffer, length, "NVGPU Temp %u", this->param - 1);
+   else
+      xSnprintf(buffer, length, "NVGPU Temp");
+}
+
+
+/* ---- Temperature meter class definition ---- */
+
+const MeterClass NVGPUTempMeter_class = {
+   .super = {
+      .extends = Class(Meter),
+      .delete = Meter_delete,
+      .display = NVGPUTempMeter_display,
+   },
+   .init = NVGPUTempMeter_init,
+   .done = NVGPUMeter_done,
+   .getUiName = NVGPUTempMeter_getUiName,
+   .updateValues = NVGPUTempMeter_updateValues,
+   .defaultMode = BAR_METERMODE,
+   .supportedModes = METERMODE_DEFAULT_SUPPORTED,
+   .maxItems = 1,
+   .total = NVGPU_TEMP_DEFAULT_TOTAL,
+   .attributes = (const int[]) { GPU_ENGINE_1 },
+   .name = "NVGPUTemp",
+   .uiName = "NVGPU Temp",
+   .caption = "GPU Temp"
+};
+
+
 /* ---- Active meter check ---- */
 
 bool NVGPUMeter_active(void) {
@@ -413,6 +571,7 @@ void NVGPUMeter_shutdown(void) {
 NVGPUMeterInfo NVGPUMeter_engineData[NVGPU_MAX_GPUS];
 const MeterClass NVGPUMeter_class = { 0 };
 const MeterClass NVGPUPowerMeter_class = { 0 };
+const MeterClass NVGPUTempMeter_class = { 0 };
 bool NVGPUMeter_active(void) { return false; }
 unsigned int NVGPUMeter_detectGPUs(void) { return 0; }
 const char* NVGPUMeter_gpuName(unsigned int gpuIndex) { (void)gpuIndex; return NULL; }
