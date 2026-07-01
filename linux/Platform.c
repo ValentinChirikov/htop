@@ -51,8 +51,10 @@ in the source distribution for its full text.
 #include "linux/Compat.h"
 #include "linux/IOPriority.h"
 #include "linux/IOPriorityPanel.h"
+#include "linux/IPMIPower.h"
 #include "linux/LinuxMachine.h"
 #include "linux/LinuxProcess.h"
+#include "linux/LlamaCpp.h"
 #include "linux/NVGPU.h"
 #include "linux/OpenRCMeter.h"
 #include "linux/SELinuxMeter.h"
@@ -277,6 +279,8 @@ const MeterClass* const Platform_meterTypes[] = {
    &OpenRCMeter_class,
    &OpenRCUserMeter_class,
    &FileDescriptorMeter_class,
+   &IPMIPowerMeter_class,
+   &LlamaCppMeter_class,
    &GPUMeter_class,
 #ifdef BUILD_WITH_NVIDIA
    &NVGPUMeter_class,

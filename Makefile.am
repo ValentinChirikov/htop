@@ -194,10 +194,12 @@ linux_platform_headers = \
 	linux/HugePageMeter.h \
 	linux/IOPriority.h \
 	linux/IOPriorityPanel.h \
+	linux/IPMIPower.h \
 	linux/LibSensors.h \
 	linux/LinuxMachine.h \
 	linux/LinuxProcess.h \
 	linux/LinuxProcessTable.h \
+	linux/LlamaCpp.h \
 	linux/NVGPU.h \
 	linux/OpenRCMeter.h \
 	linux/Platform.h \
@@ -222,10 +224,12 @@ linux_platform_sources = \
 	linux/GPU.c \
 	linux/HugePageMeter.c \
 	linux/IOPriorityPanel.c \
+	linux/IPMIPower.c \
 	linux/LibSensors.c \
 	linux/LinuxMachine.c \
 	linux/LinuxProcess.c \
 	linux/LinuxProcessTable.c \
+	linux/LlamaCpp.c \
 	linux/NVGPU.c \
 	linux/OpenRCMeter.c \
 	linux/Platform.c \
