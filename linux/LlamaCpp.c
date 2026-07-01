@@ -278,22 +278,22 @@ static void LlamaCppMeter_display(const Object* cast, RichString* out) {
 
    RichString_appendAscii(out, CRT_colors[METER_TEXT], "tg: ");
    written = xSnprintf(buffer, sizeof(buffer), "%.1f", valTg);
-   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE_IOREAD], buffer, written);
 
    RichString_appendAscii(out, CRT_colors[METER_TEXT], " pp: ");
    written = xSnprintf(buffer, sizeof(buffer), "%.1f", valPp);
-   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE_IOREAD], buffer, written);
 
    RichString_appendAscii(out, CRT_colors[METER_TEXT], " t/s  req: ");
    written = xSnprintf(buffer, sizeof(buffer), "%.0f", valProc);
-   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE_IOREAD], buffer, written);
    RichString_appendAscii(out, CRT_colors[METER_TEXT], "/");
    written = xSnprintf(buffer, sizeof(buffer), "%.0f", valDef);
-   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE_IOREAD], buffer, written);
 
    RichString_appendAscii(out, CRT_colors[METER_TEXT], "  ntok: ");
    written = xSnprintf(buffer, sizeof(buffer), "%.0f", valNTok);
-   RichString_appendnAscii(out, CRT_colors[METER_VALUE], buffer, written);
+   RichString_appendnAscii(out, CRT_colors[METER_VALUE_IOREAD], buffer, written);
 }
 
 
