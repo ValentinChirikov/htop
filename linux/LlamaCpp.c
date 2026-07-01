@@ -312,7 +312,7 @@ const MeterClass LlamaCppMeter_class = {
    .total = 0.0,
    .attributes = LlamaCppMeter_attributes,
    .name = "LlamaCpp",
-   .uiName = "llama.cpp",
-   .caption = "llama: ",
+   .uiName = "LLM",
+   .caption = "LLM: ",
    .description = "llama.cpp token throughput (HTOP_LLAMACPP_METRICS_URL)",
 };
