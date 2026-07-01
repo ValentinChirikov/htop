@@ -482,6 +482,12 @@ static bool Settings_read(Settings* this, const char* fileName, const Machine* h
       #ifdef BUILD_WITH_CPU_TEMP
       } else if (String_eq(option[0], "show_cpu_temperature")) {
          this->showCPUTemperature = atoi(option[1]);
+      #endif
+      #ifdef BUILD_WITH_NVIDIA
+      } else if (String_eq(option[0], "show_gpu_temperature")) {
+         this->showGPUTemperature = atoi(option[1]);
+      #endif
+      #if defined(BUILD_WITH_CPU_TEMP) || defined(BUILD_WITH_NVIDIA)
       } else if (String_eq(option[0], "degree_fahrenheit")) {
          this->degreeFahrenheit = atoi(option[1]);
       #endif
@@ -719,6 +725,11 @@ int Settings_write(const Settings* this, bool onCrash) {
    printSettingInteger("show_cpu_frequency", this->showCPUFrequency);
    #ifdef BUILD_WITH_CPU_TEMP
    printSettingInteger("show_cpu_temperature", this->showCPUTemperature);
+   #endif
+   #ifdef BUILD_WITH_NVIDIA
+   printSettingInteger("show_gpu_temperature", this->showGPUTemperature);
+   #endif
+   #if defined(BUILD_WITH_CPU_TEMP) || defined(BUILD_WITH_NVIDIA)
    printSettingInteger("degree_fahrenheit", this->degreeFahrenheit);
    #endif
    printSettingInteger("show_cached_memory", this->showCachedMemory);
@@ -827,6 +838,11 @@ Settings* Settings_new(const Machine* host, Hashtable* dynamicMeters, Hashtable*
    this->showCPUFrequency = false;
    #ifdef BUILD_WITH_CPU_TEMP
    this->showCPUTemperature = false;
+   #endif
+   #ifdef BUILD_WITH_NVIDIA
+   this->showGPUTemperature = false;
+   #endif
+   #if defined(BUILD_WITH_CPU_TEMP) || defined(BUILD_WITH_NVIDIA)
    this->degreeFahrenheit = false;
    #endif
    this->showCachedMemory = true;

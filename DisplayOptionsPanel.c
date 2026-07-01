@@ -305,6 +305,11 @@ DisplayOptionsPanel* DisplayOptionsPanel_new(Settings* settings, ScreenManager* 
    #error Unknown temperature implementation!
    #endif
                                                  &(settings->showCPUTemperature)));
+   #endif
+   #ifdef BUILD_WITH_NVIDIA
+   Panel_add(super, (Object*) CheckItem_newByRef("Also show GPU temperature", &(settings->showGPUTemperature)));
+   #endif
+   #if defined(BUILD_WITH_CPU_TEMP) || defined(BUILD_WITH_NVIDIA)
    Panel_add(super, (Object*) CheckItem_newByRef("- Show temperature in degree Fahrenheit instead of Celsius", &(settings->degreeFahrenheit)));
    #endif
    Panel_add(super, (Object*) CheckItem_newByRef("Show cached memory in graph and bar modes", &(settings->showCachedMemory)));

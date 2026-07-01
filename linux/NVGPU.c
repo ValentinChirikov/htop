@@ -130,6 +130,14 @@ static void nvmlFetchValues(void) {
 }
 
 
+/* Report temperatures in Fahrenheit when the global degree-Fahrenheit setting
+ * is on; otherwise Celsius. The setting always exists in NVIDIA builds
+ * (see Settings.h), so it can be read directly. */
+static bool NVGPUTemp_useFahrenheit(const Meter* this) {
+   return this->host->settings->degreeFahrenheit;
+}
+
+
 /* ---- Meter: updateValues ---- */
 
 static void NVGPUMeter_updateValues(Meter* this) {
@@ -170,10 +178,22 @@ static void NVGPUMeter_updateValues(Meter* this) {
       /* Meter_humanUnit takes a value in KiB and appends its own unit suffix. */
       Meter_humanUnit(memUsed, NVGPUMeter_engineData[gpuIndex].usedMem / 1024.0, sizeof(memUsed));
       Meter_humanUnit(memTotal, NVGPUMeter_engineData[gpuIndex].totalMem / 1024.0, sizeof(memTotal));
-      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%s Mem %s/%s %.1f%%",
-         utilBuf, memUsed, memTotal, this->values[1]);
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%s %s/%s",
+         utilBuf, memUsed, memTotal);
    } else {
-      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%s Mem N/A", utilBuf);
+      xSnprintf(this->txtBuffer, sizeof(this->txtBuffer), "%s N/A", utilBuf);
+   }
+
+   /* Optionally append GPU temperature, mirroring the CPU temperature appendix. */
+   if (this->host->settings->showGPUTemperature) {
+      double temp = NVGPUMeter_engineData[gpuIndex].temperature;
+      if (isNonnegative(temp)) {
+         size_t len = strlen(this->txtBuffer);
+         if (NVGPUTemp_useFahrenheit(this))
+            xSnprintf(this->txtBuffer + len, sizeof(this->txtBuffer) - len, " %.0f%sF", temp * 9 / 5 + 32, CRT_degreeSign);
+         else
+            xSnprintf(this->txtBuffer + len, sizeof(this->txtBuffer) - len, " %.0f%sC", temp, CRT_degreeSign);
+      }
    }
 }
 
@@ -199,13 +219,28 @@ static void NVGPUMeter_display(const Object* cast, RichString* out) {
 
    if (isNonnegative(this->values[1])) {
       /* Meter_humanUnit takes a value in KiB and appends its own unit suffix. */
+      char memTotal[16];
       Meter_humanUnit(buffer, NVGPUMeter_engineData[gpuIndex].usedMem / 1024.0, sizeof(buffer));
+      Meter_humanUnit(memTotal, NVGPUMeter_engineData[gpuIndex].totalMem / 1024.0, sizeof(memTotal));
       int memLen = strlen(buffer);
-      written = xSnprintf(buffer + memLen, sizeof(buffer) - memLen, " %.1f%%", this->values[1]);
-      RichString_appendAscii(out, CRT_colors[METER_TEXT], " Mem ");
+      written = xSnprintf(buffer + memLen, sizeof(buffer) - memLen, "/%s", memTotal);
+      RichString_appendAscii(out, CRT_colors[METER_TEXT], " ");
       RichString_appendnAscii(out, CRT_colors[BAR_SHADOW], buffer, memLen + written);
    } else {
-      RichString_appendAscii(out, CRT_colors[METER_TEXT], " Mem N/A");
+      RichString_appendAscii(out, CRT_colors[METER_TEXT], " N/A");
+   }
+
+   /* Optionally append GPU temperature, mirroring the CPU temperature appendix. */
+   if (this->host->settings->showGPUTemperature) {
+      double temp = NVGPUMeter_engineData[gpuIndex].temperature;
+      if (isNonnegative(temp)) {
+         if (NVGPUTemp_useFahrenheit(this))
+            written = xSnprintf(buffer, sizeof(buffer), " %.0f%sF", temp * 9 / 5 + 32, CRT_degreeSign);
+         else
+            written = xSnprintf(buffer, sizeof(buffer), " %.0f%sC", temp, CRT_degreeSign);
+         /* CRT_degreeSign is multibyte (°); use the wide append so the glyph decodes. */
+         RichString_appendnWide(out, CRT_colors[METER_VALUE], buffer, written);
+      }
    }
 }
 
@@ -389,18 +424,6 @@ const MeterClass NVGPUPowerMeter_class = {
 /* ---- Temperature meter: default bar total (°C) when the GPU reports no slowdown threshold ---- */
 
 #define NVGPU_TEMP_DEFAULT_TOTAL 100.0
-
-
-/* Respect the global degree-Fahrenheit setting when CPU temperature support is compiled in
- * (the setting only exists then); otherwise report temperatures in Celsius. */
-static bool NVGPUTemp_useFahrenheit(const Meter* this) {
-#ifdef BUILD_WITH_CPU_TEMP
-   return this->host->settings->degreeFahrenheit;
-#else
-   (void)this;
-   return false;
-#endif
-}
 
 
 /* ---- Temperature meter: updateValues ---- */

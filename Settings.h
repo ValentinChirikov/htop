@@ -82,6 +82,11 @@ typedef struct Settings_ {
    bool showCPUSMTLabels;
    #ifdef BUILD_WITH_CPU_TEMP
    bool showCPUTemperature;
+   #endif
+   #ifdef BUILD_WITH_NVIDIA
+   bool showGPUTemperature;
+   #endif
+   #if defined(BUILD_WITH_CPU_TEMP) || defined(BUILD_WITH_NVIDIA)
    bool degreeFahrenheit;
    #endif
    bool showProgramPath;
